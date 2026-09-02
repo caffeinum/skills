@@ -1,0 +1,23 @@
+README.md
+  s_fd1195a8e298b0::t_70756057f68c40 1-47
+cannibalize/SKILL.md
+  s_fd1195a8e298b0::t_8de0469b5167b5 1-34
+cannibalize/scripts/extract.mjs
+  s_fd1195a8e298b0::t_d628aed310da9c 1-134
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "bd1bea4448cb8e79e7666900fd1447f66b8c391a",
+  "prompts": {},
+  "sessions": {
+    "s_fd1195a8e298b0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "86b77677-cc85-4fcf-8a3c-1c551feeb2a3",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Aleksey Bykhun <theisease@gmail.com>"
+    }
+  }
+}
