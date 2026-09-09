@@ -146,7 +146,11 @@ Most of what goes wrong is not a bug. It is a check that agreed with you.
   and rebuild rather than carrying it forward; it is easy to miss precisely
   because it behaves identically for everything the change does not touch. If
   you do modify one deliberately (negative controls require it), restore it and
-  **re-verify the restore** before trusting anything that follows.
+  **re-verify the restore** before trusting anything that follows. Two habits,
+  and having only the first is the common case: **restore what you edited, and
+  tear down what you started.** A leftover listener or a stale static server
+  will be found by the next run, on a port that now serves something an hour
+  old.
 - **Verify a fix as a different party than the one who wrote it.** Not because
   author tests prove nothing — they are evidence, bounded by their assertions —
   but because no boundary should close on a single implementation-derived
