@@ -1,0 +1,19 @@
+ownership/SKILL.md
+  s_c6a87cad792587::t_b71e99f7c0d5af 142-149
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "18df6c03bd0f41fcd0fe52ca82091bdcfe5546dd",
+  "prompts": {},
+  "sessions": {
+    "s_c6a87cad792587": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0883b-9b72-7042-a8e2-19e3db481021",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Aleksey Bykhun <theisease@gmail.com>"
+    }
+  }
+}
