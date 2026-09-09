@@ -103,7 +103,15 @@ Most of what goes wrong is not a bug. It is a check that agreed with you.
   (prove the subject works, else abort) is a property of the suite. Stronger
   still where you can: assert reachability *through* the subject, and require
   the target's own served-request count to be unchanged, so a refusal that was
-  actually a delivered response cannot pass.
+  actually a delivered response cannot pass. **Bookend it**: prove the subject
+  is alive before the refusals and again after, because one that starts
+  refusing everything partway through the run is invisible from either end.
+- **Say which failed: the subject, or the thing under test.** A wall of
+  failures caused by a dead network reads as a broken subject, and the natural
+  response is to distrust the subject. A check being unclear about *why* it
+  failed costs an afternoon even when every assertion in it is correct — and
+  "my check was wrong" and "my check was unclear" have different half-lives,
+  because the second survives being ignored.
 - **A check that could not run is UNVERIFIED, not a pass**, and should exit
   non-zero. `ALL PASS with 1 skipped` is how a blocking gap gets promoted.
 - **Ask what the assertion is a property of.** If its truth depends on where
