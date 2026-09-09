@@ -139,6 +139,14 @@ Most of what goes wrong is not a bug. It is a check that agreed with you.
   with, and the argument ends in a weaker check. "It's an environment
   artifact" and "it must be flaky" are the tells: both explain a failure
   without examining it.
+- **An artifact you modified to run a test is no longer the artifact.** A
+  container you applied a firewall rule to, a tree you edited for a negative
+  control, a server you restarted with different flags — results taken after
+  that are about the thing you made, not the thing you shipped. Tear it down
+  and rebuild rather than carrying it forward; it is easy to miss precisely
+  because it behaves identically for everything the change does not touch. If
+  you do modify one deliberately (negative controls require it), restore it and
+  **re-verify the restore** before trusting anything that follows.
 - **Verify a fix as a different party than the one who wrote it.** Not because
   author tests prove nothing — they are evidence, bounded by their assertions —
   but because no boundary should close on a single implementation-derived
