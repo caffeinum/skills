@@ -129,6 +129,13 @@ Most of what goes wrong is not a bug. It is a check that agreed with you.
 - **An error is not a refusal.** A 500, a 502, a connection failure, a 1-byte
   error body and zero bytes delivered all satisfy "it didn't work" assertions
   while proving nothing about enforcement.
+- **Cite the number, not the direction** — of your own claims first. The
+  errors that survive review are *true-adjacent*: one measurement away from
+  being right, so they read as correct and "be more careful" does not catch
+  them. "200 KB against an 8 MiB cap" ended a false finding in one line where
+  "it went through" had sustained it. Before saying X causes Y, or that a set
+  of inputs behaves alike, ask **which command produced this line** — and if
+  none did, say "expected" rather than stating it.
 - **Chase the noisy failure.** Not because it is likely to be real, but
   because of what it may be a symptom of: an `EADDRINUSE` from a leftover
   process was the only visible sign of an implicit dependency, and following it
