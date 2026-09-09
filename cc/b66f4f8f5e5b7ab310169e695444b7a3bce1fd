@@ -1,0 +1,19 @@
+ownership/SKILL.md
+  s_eacdf770d99162::t_aa3a1885dc85a7 106-114
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "ccb66f4f8f5e5b7ab310169e695444b7a3bce1fd",
+  "prompts": {},
+  "sessions": {
+    "s_eacdf770d99162": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "37e46d39-19cd-49f9-831e-7abcb9428a8d",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Aleksey Bykhun <theisease@gmail.com>"
+    }
+  }
+}
