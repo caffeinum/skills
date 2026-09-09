@@ -96,8 +96,14 @@ Most of what goes wrong is not a bug. It is a check that agreed with you.
 - **A passing check means nothing without a negative control.** Run it against
   the known-bad version and watch it fail *before* trusting a pass. If it
   cannot fail, it is not a check.
-- **Positive controls too.** "Nothing got through" passes on a system that
-  does nothing at all. Prove the path works before concluding it is blocked.
+- **Positive controls too, and make them load-bearing rather than adjacent.**
+  "Nothing got through" passes on a system that does nothing at all — a suite
+  pointed at a dead port will report every refusal as a pass. A control sitting
+  *beside* the cases is documentation of intent; one the cases *depend on*
+  (prove the subject works, else abort) is a property of the suite. Stronger
+  still where you can: assert reachability *through* the subject, and require
+  the target's own served-request count to be unchanged, so a refusal that was
+  actually a delivered response cannot pass.
 - **A check that could not run is UNVERIFIED, not a pass**, and should exit
   non-zero. `ALL PASS with 1 skipped` is how a blocking gap gets promoted.
 - **Ask what the assertion is a property of.** If its truth depends on where
@@ -115,6 +121,11 @@ Most of what goes wrong is not a bug. It is a check that agreed with you.
 - **An error is not a refusal.** A 500, a 502, a connection failure, a 1-byte
   error body and zero bytes delivered all satisfy "it didn't work" assertions
   while proving nothing about enforcement.
+- **Chase the noisy failure.** Not because it is likely to be real, but
+  because of what it may be a symptom of: an `EADDRINUSE` from a leftover
+  process was the only visible sign of an implicit dependency, and following it
+  uncovered a false *pass* in the same check. A success that reads as a failure
+  can be the evidence for a failure that reads as a success.
 - **A failing check may be right.** The reflex to loosen an assertion that
   fails a good build is how instruments die — a false failure gets argued
   with, and the argument ends in a weaker check. "It's an environment
