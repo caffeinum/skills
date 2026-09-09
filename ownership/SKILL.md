@@ -150,7 +150,12 @@ Most of what goes wrong is not a bug. It is a check that agreed with you.
   and having only the first is the common case: **restore what you edited, and
   tear down what you started.** A leftover listener or a stale static server
   will be found by the next run, on a port that now serves something an hour
-  old.
+  old. And **label what you started with what it actually is**: a container
+  named after the test it served says nothing, while one named
+  `rc4-plus-overlay` announces that it is not a release and gets torn down on
+  sight. The worst of these is not a stale copy of something real but a
+  *hybrid that never existed anywhere* — every result it gives is true, and
+  none of them is about a thing you ship.
 - **Verify a fix as a different party than the one who wrote it.** Not because
   author tests prove nothing — they are evidence, bounded by their assertions —
   but because no boundary should close on a single implementation-derived
