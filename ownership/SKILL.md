@@ -124,6 +124,25 @@ Most of what goes wrong is not a bug. It is a check that agreed with you.
   the trusted party, then an untrusted party is not a case you have, and
   therefore not a thing you can fail. Keep a standing role that connects as a
   stranger.
+- **Before trusting an absence, prove the instrument can see a presence.**
+  "Not found" and "cannot look" are the same output. A peer searched for a
+  socket by port to prove it had been released; inside a container, connections
+  are NAT'd through the bridge, so the tool reported the gateway's port and the
+  client's was never findable. `gone after 0s = true` would have proven
+  termination of a socket the instrument could never have seen. A matcher
+  control — *can this detector find one that definitely exists?* — is what
+  turned it into an honest UNVERIFIED.
+- **Beware the lenient fallback wearing a measurement's clothes.** A count that
+  passes on `2 -> 2, and 2 is small enough` looks quantitative and asserts
+  almost nothing; it fails silently where a specific matcher fails loudly.
+- **Read the subject's own output, not only the client's.** A check reported
+  FAIL while the server log said the guard had fired five times — it was
+  watching a deaf recipient's `readyState`, and a client that never reads
+  cannot process a close frame either, so its state was silent about what the
+  server did.
+- **"Closing" is intent, not termination.** Distinguish *the guard triggered*
+  from *the resource was released*; a connection a server merely tried to close
+  still holds memory and a slot.
 - **Observe at the boundary.** The destination's connection count, the
   container's own network namespace — not the caller's opinion of what it did.
 - **An error is not a refusal.** A 500, a 502, a connection failure, a 1-byte
