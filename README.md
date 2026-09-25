@@ -89,3 +89,21 @@ fail.
 And a failing check may simply be right. Loosening an assertion that fails a
 good build is how instruments die; "it's an environment artifact" and "it must
 be flaky" are the tells, because both explain a failure without examining it.
+
+---
+
+## screen-time
+
+**A daily time limit for Claude Code.** When today's limit is used up, Claude still
+answers — but only to say the limit was reached. Agents on the paw/cotal mesh are
+exempt, so background work keeps running.
+
+```bash
+cp -R skills/screen-time ~/.claude/skills/
+~/.claude/skills/screen-time/scripts/screen-time install
+~/.claude/skills/screen-time/scripts/screen-time set 120      # minutes per day
+~/.claude/skills/screen-time/scripts/screen-time status
+~/.claude/skills/screen-time/scripts/screen-time extend 30    # today only
+```
+
+Active time = gaps between your prompts, ignoring gaps longer than 10 minutes.

@@ -1,0 +1,179 @@
+#!/usr/bin/env python3
+"""screen-time: a daily time limit for Claude Code.
+
+When today's limit is used up, Claude still runs, but its only reply is that the
+limit was reached. Time is measured from your prompts: the gap between two prompts
+counts as active time unless it's longer than the idle gap (default 10 min).
+"""
+import fcntl, json, os, sys, time
+from datetime import date, datetime
+from pathlib import Path
+
+HOME = Path(os.environ.get("SCREEN_TIME_HOME", Path.home() / ".claude" / "screen-time"))
+SETTINGS = Path(os.environ.get("SCREEN_TIME_SETTINGS", Path.home() / ".claude" / "settings.json"))
+SELF = Path(__file__).resolve()
+DEFAULTS = {"daily_minutes": 180, "idle_gap_minutes": 10, "exempt_env": ["COTAL_AGENT_FILE"]}
+
+
+def config():
+    path = HOME / "config.json"
+    if not path.exists():
+        return dict(DEFAULTS)
+    return {**DEFAULTS, **json.loads(path.read_text())}
+
+
+def save_config(cfg):
+    HOME.mkdir(parents=True, exist_ok=True)
+    (HOME / "config.json").write_text(json.dumps(cfg, indent=2) + "\n")
+
+
+class Day:
+    """Today's usage, read and written under an exclusive lock."""
+
+    def __enter__(self):
+        HOME.mkdir(parents=True, exist_ok=True)
+        self.path = HOME / f"usage-{date.today().isoformat()}.json"
+        self.lock = open(HOME / ".lock", "w")
+        fcntl.flock(self.lock, fcntl.LOCK_EX)
+        self.data = json.loads(self.path.read_text()) if self.path.exists() else {
+            "active_seconds": 0, "extended_minutes": 0, "last_prompt": None}
+        return self
+
+    def save(self):
+        self.path.write_text(json.dumps(self.data, indent=2) + "\n")
+
+    def __exit__(self, *exc):
+        fcntl.flock(self.lock, fcntl.LOCK_UN)
+        self.lock.close()
+
+
+def limit_minutes(cfg, day):
+    return cfg["daily_minutes"] + day.data["extended_minutes"]
+
+
+def used_minutes(day):
+    return day.data["active_seconds"] / 60
+
+
+def hook():
+    try:
+        event = json.load(sys.stdin)
+    except ValueError:
+        event = {}
+    cfg = config()
+    if any(os.environ.get(name) for name in cfg["exempt_env"]):
+        return  # agents on the mesh aren't you; don't count them or stop them
+    prompt = (event.get("prompt") or "").lower()
+    with Day() as day:
+        now = time.time()
+        last = day.data["last_prompt"]
+        if last is not None and now - last <= cfg["idle_gap_minutes"] * 60:
+            day.data["active_seconds"] += now - last
+        day.data["last_prompt"] = now
+        day.save()
+        used, limit = used_minutes(day), limit_minutes(cfg, day)
+    if used < limit or "screen-time" in prompt or "screen time" in prompt:
+        return
+    print(json.dumps({"hookSpecificOutput": {
+        "hookEventName": "UserPromptSubmit",
+        "additionalContext": (
+            f"SCREEN TIME LIMIT REACHED: the user set a daily Claude limit of {limit:.0f} min "
+            f"and has used {used:.0f} min today. Do not work on their request. Reply only, "
+            "briefly, that today's screen-time limit was reached and they can come back "
+            "tomorrow, or run `screen-time extend <minutes>` if they really need more."),
+    }}))
+
+
+def status():
+    cfg = config()
+    with Day() as day:
+        used, limit = used_minutes(day), limit_minutes(cfg, day)
+    state = "LIMIT REACHED" if used >= limit else f"{limit - used:.0f} min left"
+    print(f"today: {used:.0f} / {limit:.0f} min — {state}")
+    print(f"daily limit {cfg['daily_minutes']} min, idle gap {cfg['idle_gap_minutes']} min, "
+          f"exempt when set: {', '.join(cfg['exempt_env']) or 'none'}")
+    print(f"hook installed: {'yes' if installed() else 'no — run: screen-time install'}")
+
+
+def set_limit(minutes):
+    cfg = config()
+    cfg["daily_minutes"] = minutes
+    save_config(cfg)
+    print(f"daily limit set to {minutes} min")
+
+
+def extend(minutes):
+    with Day() as day:
+        day.data["extended_minutes"] += minutes
+        day.save()
+    print(f"extended today by {minutes} min")
+
+
+def read_settings():
+    return json.loads(SETTINGS.read_text()) if SETTINGS.exists() else {}
+
+
+def our_entry(entry):
+    return any(str(SELF) in h.get("command", "") for h in entry.get("hooks", []))
+
+
+def installed():
+    return any(our_entry(e) for e in read_settings().get("hooks", {}).get("UserPromptSubmit", []))
+
+
+def install():
+    settings = read_settings()
+    if SETTINGS.exists():
+        backup = SETTINGS.with_name(f"settings.json.bak-screen-time-{datetime.now():%Y%m%d%H%M%S}")
+        backup.write_text(SETTINGS.read_text())
+    entries = settings.setdefault("hooks", {}).setdefault("UserPromptSubmit", [])
+    if not any(our_entry(e) for e in entries):
+        entries.append({"hooks": [{"type": "command", "command": f"{SELF} hook"}]})
+    SETTINGS.parent.mkdir(parents=True, exist_ok=True)
+    SETTINGS.write_text(json.dumps(settings, indent=2) + "\n")
+    if not (HOME / "config.json").exists():
+        save_config(dict(DEFAULTS))
+    print(f"installed in {SETTINGS} (applies to new Claude Code sessions)")
+    status()
+
+
+def uninstall():
+    settings = read_settings()
+    entries = settings.get("hooks", {}).get("UserPromptSubmit", [])
+    kept = [e for e in entries if not our_entry(e)]
+    if len(kept) == len(entries):
+        print("not installed")
+        return
+    settings["hooks"]["UserPromptSubmit"] = kept
+    if not kept:
+        del settings["hooks"]["UserPromptSubmit"]
+    if not settings["hooks"]:
+        del settings["hooks"]
+    SETTINGS.write_text(json.dumps(settings, indent=2) + "\n")
+    print(f"removed from {SETTINGS} (usage data kept in {HOME})")
+
+
+def main(argv):
+    cmd = argv[1] if len(argv) > 1 else "status"
+    if cmd == "hook":
+        try:
+            hook()
+        except Exception as e:  # a broken hook must never lock you out of Claude
+            print(f"screen-time hook error: {e}", file=sys.stderr)
+        return 0
+    if cmd in ("set", "extend"):
+        if len(argv) != 3 or not argv[2].isdigit():
+            print(f"usage: screen-time {cmd} <minutes>", file=sys.stderr)
+            return 2
+        (set_limit if cmd == "set" else extend)(int(argv[2]))
+        return 0
+    actions = {"status": status, "install": install, "uninstall": uninstall}
+    if cmd not in actions:
+        print("usage: screen-time [status|set <min>|extend <min>|install|uninstall]", file=sys.stderr)
+        return 2
+    actions[cmd]()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))
