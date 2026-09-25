@@ -1,0 +1,25 @@
+.gitignore
+  s_fd1195a8e298b0::t_93bc425685a278 1
+README.md
+  s_fd1195a8e298b0::t_7146647931a0e6 92-109
+screen-time/SKILL.md
+  s_fd1195a8e298b0::t_50a1fd7c35cafd 1-43
+screen-time/scripts/screen-time
+  s_fd1195a8e298b0::t_5dbf3e0688a48b 1-179
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "bd6e56480cba8a9b5b084da0bbb88df3b2bdf689",
+  "prompts": {},
+  "sessions": {
+    "s_fd1195a8e298b0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "86b77677-cc85-4fcf-8a3c-1c551feeb2a3",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Aleksey Bykhun <theisease@gmail.com>"
+    }
+  }
+}
