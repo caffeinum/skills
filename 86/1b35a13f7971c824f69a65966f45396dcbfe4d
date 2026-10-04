@@ -1,0 +1,25 @@
+README.md
+  s_fd1195a8e298b0::t_b33b9ab8f05b64 126-151
+design-cleanup/SKILL.md
+  s_fd1195a8e298b0::t_9f2eb6a1b1a5a4 1-55
+design-critic/SKILL.md
+  s_fd1195a8e298b0::t_2106a53fd1f00a 1-60
+design-critic/scripts/shoot
+  s_fd1195a8e298b0::t_2e027625b3a955 1-21
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "861b35a13f7971c824f69a65966f45396dcbfe4d",
+  "prompts": {},
+  "sessions": {
+    "s_fd1195a8e298b0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "86b77677-cc85-4fcf-8a3c-1c551feeb2a3",
+        "model": "unknown"
+      },
+      "human_author": "Aleksey Bykhun <theisease@gmail.com>"
+    }
+  }
+}
