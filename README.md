@@ -107,3 +107,19 @@ cp -R skills/screen-time ~/.claude/skills/
 ```
 
 Active time = gaps between your prompts, ignoring gaps longer than 10 minutes.
+
+---
+
+## seed-design
+
+**Stop every design from looking AI-made.** Asked for "something unique", a model
+still lands on the same purple gradient and layout, because it can't actually act
+at random. This skill has it generate a real random string in the shell and derive
+the palette, layout and typography from it, so every run is different. Based on
+Sakana AI's String Seed of Thought.
+
+```bash
+cp -R skills/seed-design ~/.claude/skills/
+~/.claude/skills/seed-design/scripts/seed        # a 64-char seed
+```
+
