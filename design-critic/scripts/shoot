@@ -1,0 +1,21 @@
+#!/bin/sh
+# shoot <url-or-file> <outdir> [max-shots]: headless screenshots down the page, one per viewport
+set -eu
+target=$1; out=$2; max=${3:-6}
+wk=$(command -v webkit-cli || echo "$HOME/.mint/bin/webkit-cli")
+[ -x "$wk" ] || { echo "shoot: webkit-cli not found (mint install caffeinum/webkit-cli)" >&2; exit 1; }
+case $target in http://*|https://*|file://*) url=$target ;; *) url="file://$(cd "$(dirname "$target")" && pwd)/$(basename "$target")" ;; esac
+mkdir -p "$out"
+tab=$("$wk" open "$url" | sed -n 's/.*"tab":"\{0,1\}\([^",}]*\).*/\1/p')
+[ -n "$tab" ] || { echo "shoot: could not open $url" >&2; exit 1; }
+trap '"$wk" close "$tab" >/dev/null 2>&1 || true' EXIT
+"$wk" eval "$tab" 'await new Promise(r => setTimeout(r, 800)); return true' >/dev/null
+height=$("$wk" eval "$tab" 'return document.documentElement.scrollHeight')
+i=0; y=0
+while [ "$i" -lt "$max" ]; do
+  "$wk" eval "$tab" "window.scrollTo(0, $y); await new Promise(r => setTimeout(r, 300)); return true" >/dev/null
+  "$wk" shot "$tab" "$out/shot-$i.png" >/dev/null
+  echo "$out/shot-$i.png"
+  i=$((i + 1)); y=$((y + 760))
+  [ "$y" -lt "${height%.*}" ] || break
+done

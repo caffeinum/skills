@@ -123,3 +123,29 @@ cp -R skills/seed-design ~/.claude/skills/
 ~/.claude/skills/seed-design/scripts/seed        # a 64-char seed
 ```
 
+---
+
+## design-critic
+
+**A separate critic for your designs.** The model that built a page can't see its
+flaws, so this skill screenshots the page headless (webkit-cli, no window), hands
+only the pixels to a fresh subagent with a strict 7-point rubric, fixes the top 3
+issues, and loops until it scores 8/10 or 3 rounds pass.
+
+```bash
+cp -R skills/design-critic ~/.claude/skills/
+~/.claude/skills/design-critic/scripts/shoot ./index.html ./shots   # or a URL
+```
+
+---
+
+## design-cleanup
+
+**Subtract until it looks intentional.** A last pass that deletes every element
+without a job, then hunts the usual AI tells (purple gradient hero, emoji bullets,
+cards in cards, "Supercharge your workflow") and replaces them with real choices.
+
+```bash
+cp -R skills/design-cleanup ~/.claude/skills/
+```
+
