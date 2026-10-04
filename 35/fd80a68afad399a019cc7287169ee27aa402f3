@@ -1,0 +1,23 @@
+README.md
+  s_fd1195a8e298b0::t_a51cdad996befa 110-125
+seed-design/SKILL.md
+  s_fd1195a8e298b0::t_3364bac325bf09 1-45
+seed-design/scripts/seed
+  s_fd1195a8e298b0::t_84e552de3e1fbe 1-4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "35fd80a68afad399a019cc7287169ee27aa402f3",
+  "prompts": {},
+  "sessions": {
+    "s_fd1195a8e298b0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "86b77677-cc85-4fcf-8a3c-1c551feeb2a3",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Aleksey Bykhun <theisease@gmail.com>"
+    }
+  }
+}
