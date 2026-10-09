@@ -1,0 +1,370 @@
+#!/usr/bin/env node
+// work — time-boxed work blocks for Claude Code.
+//
+//   work start [duration] [task…]   open a block for this session (default 15m)
+//   work status                     time left in this session's block
+//   work stop                       end this session's block early
+//   work report [--days N]          what agents did after each kind of nudge
+//   work hook                       the Stop hook (reads the hook payload on stdin)
+//   work install | uninstall        add/remove the Stop hook in ~/.claude/settings.json
+//
+// The Stop hook does nothing unless this session has an open block. While one is
+// open, each time Claude tries to end its turn the hook hands it the next nudge
+// (review, run it, get a critique, …) and the time left. Once time is up it asks
+// for one short wrap-up, then lets Claude stop.
+
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+
+const HOME = process.env.WORK_HOME || path.join(os.homedir(), ".claude", "work");
+const BLOCKS = path.join(HOME, "blocks");
+const LOG = path.join(HOME, "log.jsonl");
+const SETTINGS = process.env.WORK_SETTINGS || path.join(os.homedir(), ".claude", "settings.json");
+const SELF = fs.realpathSync(process.argv[1]);
+const HOOK_COMMAND = `node ${JSON.stringify(SELF)} hook`;
+const DEFAULT_MINUTES = 15;
+// Claude Code ends a turn after 8 consecutive Stop-hook blocks unless this is raised.
+const BLOCK_CAP_ENV = "CLAUDE_CODE_STOP_HOOK_BLOCK_CAP";
+const BLOCK_CAP = "1000";
+
+const NUDGES = [
+  {
+    mode: "review",
+    text: "Read back what you produced so far with fresh eyes: the diff, the output, the claims in your last message. Fix whatever is wrong, unclear or unverified.",
+  },
+  {
+    mode: "run-it",
+    text: "Run the real thing end to end and watch what it actually does: build it, execute it, open it, call it. Fix what you see, not what you expect.",
+  },
+  {
+    mode: "critique",
+    text: "Ask a subagent with fresh context to critique the work: give it the goal and the result, not your reasoning. Take its strongest points seriously and address them.",
+  },
+  {
+    mode: "edges",
+    text: "Look for the cases you skipped: empty, huge, malformed, concurrent, offline, first run. Try a few for real and handle the ones that break.",
+  },
+  {
+    mode: "user",
+    text: "Picture the person who will use this. Walk their path from the start and smooth whatever would confuse or slow them down.",
+  },
+  {
+    mode: "simplify",
+    text: "Make it smaller: remove what isn't needed, merge near-duplicates, cut options nobody asked for. Check it still works afterwards.",
+  },
+  {
+    mode: "next-step",
+    text: "Step back to the goal and pick the most valuable next piece of work toward it. Do that piece properly.",
+  },
+  {
+    mode: "handoff",
+    text: "Make the work easy to pick up: tests where they're missing, a commit if it's ready, notes for anything left open.",
+  },
+];
+
+function fail(message) {
+  process.stderr.write(`work: ${message}\n`);
+  process.exit(1);
+}
+
+function sessionId() {
+  const id = process.env.CLAUDE_CODE_SESSION_ID;
+  if (!id) fail("CLAUDE_CODE_SESSION_ID is not set — run this from inside a Claude Code session");
+  return id;
+}
+
+function blockPath(id) {
+  return path.join(BLOCKS, `${id.replace(/[^A-Za-z0-9_-]/g, "")}.json`);
+}
+
+function readBlock(id) {
+  try {
+    return JSON.parse(fs.readFileSync(blockPath(id), "utf8"));
+  } catch (error) {
+    if (error.code === "ENOENT") return null;
+    throw error;
+  }
+}
+
+function writeBlock(block) {
+  fs.mkdirSync(BLOCKS, { recursive: true });
+  fs.writeFileSync(blockPath(block.session), JSON.stringify(block, null, 2));
+}
+
+function appendLog(entry) {
+  fs.mkdirSync(HOME, { recursive: true });
+  fs.appendFileSync(LOG, `${JSON.stringify(entry)}\n`);
+}
+
+export function parseDuration(text) {
+  const match = /^(?:(\d+(?:\.\d+)?)h)?(?:(\d+)m(?:in)?)?$/i.exec(text) ?? /^(\d+)$/.exec(text);
+  if (!match || !text) return null;
+  if (match.length === 2) return Number(match[1]);
+  const hours = Number(match[1] ?? 0);
+  const minutes = Number(match[2] ?? 0);
+  const total = Math.round(hours * 60 + minutes);
+  return total > 0 ? total : null;
+}
+
+function formatMinutes(ms) {
+  const minutes = Math.max(0, Math.ceil(ms / 60000));
+  if (minutes < 60) return `${minutes}m`;
+  return `${Math.floor(minutes / 60)}h${String(minutes % 60).padStart(2, "0")}m`;
+}
+
+// Activity in the transcript since `fromLine`: what the agent did after the last nudge.
+function activitySince(transcriptPath, fromLine) {
+  const lines = fs.readFileSync(transcriptPath, "utf8").split("\n").filter(Boolean);
+  const activity = { tools: {}, toolCalls: 0, filesEdited: [], subagents: 0, outputTokens: 0, textChars: 0 };
+  for (const line of lines.slice(fromLine)) {
+    let entry;
+    try {
+      entry = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (entry.type !== "assistant" || !entry.message) continue;
+    activity.outputTokens += entry.message.usage?.output_tokens ?? 0;
+    for (const part of entry.message.content ?? []) {
+      if (part.type === "text") activity.textChars += part.text.length;
+      if (part.type !== "tool_use") continue;
+      activity.toolCalls += 1;
+      activity.tools[part.name] = (activity.tools[part.name] ?? 0) + 1;
+      if (part.name === "Agent" || part.name === "Task") activity.subagents += 1;
+      const file = part.input?.file_path ?? part.input?.notebook_path;
+      if (["Edit", "Write", "MultiEdit", "NotebookEdit"].includes(part.name) && file && !activity.filesEdited.includes(file)) {
+        activity.filesEdited.push(file);
+      }
+    }
+  }
+  return { activity, lineCount: lines.length };
+}
+
+function start(args) {
+  const id = sessionId();
+  if (args.length && /^\d/.test(args[0]) && !parseDuration(args[0])) fail(`can't read ${JSON.stringify(args[0])} as a duration — use 2h, 90m, 1h30m or plain minutes`);
+  const minutes = args.length && parseDuration(args[0]) ? parseDuration(args.shift()) : DEFAULT_MINUTES;
+  const task = args.join(" ").trim();
+  const now = Date.now();
+  const previous = readBlock(id);
+  if (previous && !previous.finished && previous.endsAt > now) {
+    fail(`a ${previous.minutes}m block is already open with ${formatMinutes(previous.endsAt - now)} left — \`work stop\` first to replace it`);
+  }
+  const block = {
+    session: id,
+    cwd: process.cwd(),
+    task,
+    minutes,
+    startedAt: now,
+    endsAt: now + minutes * 60000,
+    nudges: 0,
+    lastNudge: null,
+    transcriptLine: 0,
+    wrapUpSent: false,
+    idleStreak: 0,
+    finished: false,
+  };
+  writeBlock(block);
+  appendLog({ event: "start", ts: new Date(now).toISOString(), session: id, cwd: block.cwd, task, minutes });
+  console.log(`work block open: ${minutes}m, until ${new Date(block.endsAt).toLocaleTimeString()}${task ? ` — ${task}` : ""}`);
+  if (!hookInstalled()) console.log(`note: the Stop hook is not in ${SETTINGS}. unless it is set up elsewhere (project settings, --settings), nothing keeps the block going — run \`work install\``);
+}
+
+function status() {
+  const block = readBlock(sessionId());
+  if (!block || block.finished) return console.log("no open work block in this session");
+  const left = block.endsAt - Date.now();
+  console.log(left > 0
+    ? `${formatMinutes(left)} left of ${block.minutes}m · ${block.nudges} nudge(s) so far${block.task ? ` · ${block.task}` : ""}`
+    : "time is up — the next stop gets the wrap-up request");
+}
+
+function stop() {
+  const block = readBlock(sessionId());
+  if (!block || block.finished) return console.log("no open work block in this session");
+  block.finished = true;
+  writeBlock(block);
+  appendLog({ event: "stopped-early", ts: new Date().toISOString(), session: block.session, elapsedMs: Date.now() - block.startedAt, nudges: block.nudges });
+  console.log("work block closed early");
+}
+
+function nudgeFor(block) {
+  const nudge = NUDGES[block.nudges % NUDGES.length];
+  const left = formatMinutes(block.endsAt - Date.now());
+  const goal = block.task ? `The block's task: ${block.task}. ` : "";
+  const idle = block.idleStreak >= 2
+    ? `The last ${block.idleStreak} passes ended without using any tool. Pick one concrete thing with real value — run something, read something, test something, or ask a subagent — and do it before stopping.`
+    : null;
+  return {
+    nudge,
+    reason: [
+      `[work · ${left} left of ${block.minutes}m · ${nudge.mode}] This is a timed work block, so keep going rather than wrapping up. ${goal}`,
+      ...(idle ? [idle] : []),
+      `${nudge.text}`,
+      "Only do work with real value for this task. A check that finds nothing is fine; a change made just to look busy is not, so if this nudge doesn't fit, pick the most useful verification or follow-up instead.",
+      "Don't reply to or message the user until the block ends: no status updates, no summaries, no \"done\". I'll tell you when it's time to report.",
+    ].join("\n"),
+  };
+}
+
+function hook() {
+  let payload;
+  try {
+    payload = JSON.parse(fs.readFileSync(0, "utf8") || "{}");
+  } catch {
+    return;
+  }
+  if (!payload.session_id) return;
+  const block = readBlock(payload.session_id);
+  if (!block || block.finished) return;
+
+  const now = Date.now();
+  let measured = { activity: null, lineCount: block.transcriptLine };
+  if (payload.transcript_path && fs.existsSync(payload.transcript_path)) {
+    measured = activitySince(payload.transcript_path, block.transcriptLine);
+  }
+  const base = { ts: new Date(now).toISOString(), session: block.session, task: block.task, minutes: block.minutes };
+  const said = typeof payload.last_assistant_message === "string" ? payload.last_assistant_message.slice(0, 300) : undefined;
+
+  if (block.lastNudge) {
+    appendLog({ ...base, event: "after-nudge", mode: block.lastNudge.mode, pass: block.nudges, secs: Math.round((now - block.lastNudge.at) / 1000), ...measured.activity, said });
+  } else {
+    appendLog({ ...base, event: "first-pass", secs: Math.round((now - block.startedAt) / 1000), ...measured.activity, said });
+  }
+  block.transcriptLine = measured.lineCount;
+  block.idleStreak = measured.activity && measured.activity.toolCalls === 0 ? (block.idleStreak ?? 0) + 1 : 0;
+
+  if (now >= block.endsAt) {
+    if (block.wrapUpSent) {
+      block.finished = true;
+      writeBlock(block);
+      appendLog({ ...base, event: "end", nudges: block.nudges, elapsedMs: now - block.startedAt });
+      return;
+    }
+    block.wrapUpSent = true;
+    block.lastNudge = { mode: "wrap-up", at: now };
+    writeBlock(block);
+    process.stdout.write(JSON.stringify({
+      decision: "block",
+      reason: [
+        `[work · time is up · ${block.minutes}m block, ${block.nudges} nudge(s)] Wrap up now.`,
+        "Write a short report: what you did, what is verified, what is still open.",
+        "Then add one line starting `work-feedback:` naming which nudge led to the most useful work in this block and why.",
+      ].join("\n"),
+    }));
+    return;
+  }
+
+  const { nudge, reason } = nudgeFor(block);
+  block.nudges += 1;
+  block.lastNudge = { mode: nudge.mode, at: now };
+  writeBlock(block);
+  process.stdout.write(JSON.stringify({ decision: "block", reason }));
+}
+
+function report(args) {
+  const daysIndex = args.indexOf("--days");
+  const days = daysIndex >= 0 ? Number(args[daysIndex + 1]) : 30;
+  if (!Number.isFinite(days) || days <= 0) fail("--days needs a positive number");
+  const since = Date.now() - days * 86400000;
+  let entries = [];
+  try {
+    entries = fs.readFileSync(LOG, "utf8").split("\n").filter(Boolean).map((line) => JSON.parse(line));
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  }
+  entries = entries.filter((entry) => Date.parse(entry.ts) >= since);
+  const blocks = entries.filter((entry) => entry.event === "start");
+  console.log(`last ${days} day(s): ${blocks.length} block(s), ${blocks.reduce((sum, b) => sum + b.minutes, 0)} minutes booked\n`);
+
+  const byMode = {};
+  for (const entry of entries.filter((e) => e.event === "after-nudge" || e.event === "first-pass")) {
+    const mode = entry.event === "first-pass" ? "(before any nudge)" : entry.mode;
+    const row = (byMode[mode] ??= { n: 0, secs: 0, toolCalls: 0, edited: 0, files: 0, subagents: 0, tokens: 0, idle: 0 });
+    row.n += 1;
+    row.secs += entry.secs ?? 0;
+    row.toolCalls += entry.toolCalls ?? 0;
+    row.files += entry.filesEdited?.length ?? 0;
+    row.edited += entry.filesEdited?.length ? 1 : 0;
+    row.subagents += entry.subagents ?? 0;
+    row.tokens += entry.outputTokens ?? 0;
+    row.idle += (entry.toolCalls ?? 0) === 0 ? 1 : 0;
+  }
+  const header = ["mode", "n", "avg min", "avg tools", "% edited", "avg files", "avg subagents", "avg out tok", "% idle"];
+  const rows = Object.entries(byMode)
+    .sort((a, b) => b[1].toolCalls / b[1].n - a[1].toolCalls / a[1].n)
+    .map(([mode, r]) => [
+      mode,
+      r.n,
+      (r.secs / r.n / 60).toFixed(1),
+      (r.toolCalls / r.n).toFixed(1),
+      `${Math.round((100 * r.edited) / r.n)}%`,
+      (r.files / r.n).toFixed(1),
+      (r.subagents / r.n).toFixed(1),
+      Math.round(r.tokens / r.n),
+      `${Math.round((100 * r.idle) / r.n)}%`,
+    ]);
+  const widths = header.map((h, i) => Math.max(h.length, ...rows.map((row) => String(row[i]).length)));
+  for (const row of [header, ...rows]) console.log(row.map((cell, i) => String(cell).padEnd(widths[i])).join("  "));
+  if (!rows.length) console.log("(no nudges logged yet)");
+  console.log("\n% idle = the agent stopped again without using a tool. wrap-up feedback lines live in the session transcripts (`work-feedback:`).");
+}
+
+function readSettings() {
+  try {
+    return JSON.parse(fs.readFileSync(SETTINGS, "utf8"));
+  } catch (error) {
+    if (error.code === "ENOENT") return {};
+    fail(`cannot read ${SETTINGS}: ${error.message}`);
+  }
+}
+
+function isOurHook(group) {
+  return (group.hooks ?? []).some((h) => typeof h.command === "string" && h.command.includes("work") && h.command.endsWith(" hook") && h.command.includes(path.basename(SELF)));
+}
+
+function hookInstalled() {
+  return (readSettings().hooks?.Stop ?? []).some(isOurHook);
+}
+
+function install() {
+  const settings = readSettings();
+  const hasHook = (settings.hooks?.Stop ?? []).some(isOurHook);
+  const hasCap = Boolean(settings.env?.[BLOCK_CAP_ENV]);
+  if (hasHook && hasCap) return console.log("Stop hook already installed");
+  if (fs.existsSync(SETTINGS)) fs.copyFileSync(SETTINGS, `${SETTINGS}.bak-work-${Date.now()}`);
+  if (!hasHook) {
+    settings.hooks ??= {};
+    settings.hooks.Stop ??= [];
+    settings.hooks.Stop.push({ hooks: [{ type: "command", command: HOOK_COMMAND }] });
+  }
+  if (!hasCap) {
+    settings.env ??= {};
+    settings.env[BLOCK_CAP_ENV] = BLOCK_CAP;
+  }
+  fs.mkdirSync(path.dirname(SETTINGS), { recursive: true });
+  fs.writeFileSync(SETTINGS, `${JSON.stringify(settings, null, 2)}\n`);
+  console.log(`installed the Stop hook in ${SETTINGS} (it does nothing unless a session has an open block)`);
+  if (!hasCap) console.log(`set ${BLOCK_CAP_ENV}=${BLOCK_CAP} there too, so a long block isn't cut off after 8 nudges`);
+}
+
+function uninstall() {
+  const settings = readSettings();
+  const before = settings.hooks?.Stop ?? [];
+  const after = before.filter((group) => !isOurHook(group));
+  if (after.length === before.length) return console.log("Stop hook was not installed");
+  fs.copyFileSync(SETTINGS, `${SETTINGS}.bak-work-${Date.now()}`);
+  settings.hooks.Stop = after;
+  if (!after.length) delete settings.hooks.Stop;
+  if (settings.env?.[BLOCK_CAP_ENV] === BLOCK_CAP) delete settings.env[BLOCK_CAP_ENV];
+  fs.writeFileSync(SETTINGS, `${JSON.stringify(settings, null, 2)}\n`);
+  console.log("removed the Stop hook; blocks and the log stay in ~/.claude/work");
+}
+
+const [command, ...args] = process.argv.slice(2);
+const commands = { start, status, stop, report, hook, install, uninstall };
+if (!commands[command]) {
+  fail(`unknown command ${JSON.stringify(command ?? "")} — use start [duration] [task], status, stop, report [--days N], install, uninstall`);
+}
+commands[command](args);

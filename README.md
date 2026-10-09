@@ -149,3 +149,23 @@ cards in cards, "Supercharge your workflow") and replaces them with real choices
 cp -R skills/design-cleanup ~/.claude/skills/
 ```
 
+
+---
+
+## work
+
+**Book Claude for a stretch of time instead of until its first "done".**
+`/work 2h <task>` (duration and task optional, default 15 minutes) opens a work block. Until the timer runs out, a
+Stop hook catches every attempt to end the turn and gives the next nudge: review it,
+run it, get a subagent critique, try the edges, think about the user, simplify, take
+the next step, make it easy to hand off. Claude doesn't message you until the time is
+up, then writes one short report. Every nudge is logged with what happened after it,
+so you can see which ones lead to useful work.
+
+```bash
+cp -R skills/work ~/.claude/skills/
+~/.claude/skills/work/scripts/work install       # Stop hook + raises Claude Code's 8-continuation cap
+~/.claude/skills/work/scripts/work report        # per nudge: time, tool calls, edits, subagents, idle stops
+```
+
+The hook does nothing in sessions without an open block.
