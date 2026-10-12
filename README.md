@@ -169,3 +169,23 @@ cp -R skills/work ~/.claude/skills/
 ```
 
 The hook does nothing in sessions without an open block.
+
+---
+
+## echo-writer
+
+**Draft or rewrite user-facing copy through [Echo](https://echo.fulcrum.inc), a writing
+model that writes as a chosen author.** Defaults to Julia Evans, the voice picked for
+vibeOS.
+
+```bash
+python3 echo-writer/scripts/echo.py --check     # where the key comes from (never prints it)
+echo "Linux keeps starting in the background." | \
+  python3 echo-writer/scripts/echo.py "Rewrite this boot-screen hint, one line:"
+python3 echo-writer/scripts/echo.py --persona "E. B. White" "…"
+```
+
+Key lookup order: `$ECHO_API_KEY`, `~/.config/echo/key`, `~/.config/vibeos-writer/echo_key`.
+`ECHO_PERSONA` and `ECHO_BASE_URL` override the defaults. The skill's real content is the
+editing checklist: Echo invents claims, drops facts, writes UI strings in lowercase and
+barely touches plain copy, so every draft gets checked against what the product does.
