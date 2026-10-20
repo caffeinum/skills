@@ -201,3 +201,14 @@ query (`bd`, `gh issue`, `TASKS.md`), open and in-progress items get folded in.
 ```bash
 cp -R skills/now ~/.claude/skills/
 ```
+
+---
+
+## hire
+
+**One line: hand the fix off.** `/hire <what to fix>` tells Claude to create a subagent,
+give it its own git worktree, and have it open a PR with the fix.
+
+```bash
+cp -R skills/hire ~/.claude/skills/
+```
