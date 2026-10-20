@@ -189,3 +189,15 @@ Key lookup order: `$ECHO_API_KEY`, `~/.config/echo/key`, `~/.config/vibeos-write
 `ECHO_PERSONA` and `ECHO_BASE_URL` override the defaults. The skill's real content is the
 editing checklist: Echo invents claims, drops facts, writes UI strings in lowercase and
 barely touches plain copy, so every draft gets checked against what the product does.
+
+---
+
+## now
+
+**A quick "where are we" for the current session.** `/now` lists what got done, what's
+mid-flight and what's left, in a few lines. If the project has a task tracker it can
+query (`bd`, `gh issue`, `TASKS.md`), open and in-progress items get folded in.
+
+```bash
+cp -R skills/now ~/.claude/skills/
+```
