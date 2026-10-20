@@ -1,6 +1,6 @@
 ---
 name: now
-description: A short status check on the current session — what got done, what is mid-flight, what is left. Use when the user types /now, or asks "where are we", "summarize so far", "what's done", "what's left", "status?", or wants a recap before stepping away, switching tasks or compacting.
+description: A short status check on the current session — what got done, what is mid-flight, what is left. Use when the user types /now or just "now", or asks "where are we now", "what now", "where are we", "summarize so far", "what's done", "what's left", "status?", or wants a recap before stepping away, switching tasks or compacting.
 ---
 
 # now
